@@ -2,6 +2,7 @@ import bpy
 import math
 import numpy as np
 from mathutils import Vector
+import json
 
 MAXIMUM_VIEW_RAIDUS = 500
 
@@ -62,7 +63,7 @@ class Curve:
 			t = sample.tangent
 			n = sample.normal
 			b = sample.binormal
-
+			
 			radiusend = (co[0] + r*n[0], co[1] + r*n[1], co[2] + r*n[2])
 			curvatureend = (co[0] + k*n[0], co[1] + k*n[1], co[2] + k*n[2])
 			tangentend = (co[0] + t[0], co[1] + t[1], co[2] + t[2])
@@ -82,10 +83,10 @@ class Curve:
 			# polyline.points[1].co = normalend + (1,)
 
 			#binormal at sample
-			# polyline = curve.splines.new('POLY')
-			# polyline.points.add(1)
-			# polyline.points[0].co = co + (1,)
-			# polyline.points[1].co = binormalend + (1,)
+			polyline = curve.splines.new('POLY')
+			polyline.points.add(1)
+			polyline.points[0].co = co + (1,)
+			polyline.points[1].co = binormalend + (1,)
 
 			# curvature pointing opposite to k*n
 			polyline = curve.splines.new('POLY')
@@ -140,9 +141,10 @@ class Clothoid(Curve):
 			s += step
 
 			t = (math.cos(theta), math.sin(theta), 0)
-			b = (0, 0, 1)
+			b = (-math.sin(theta) * math.copysign(1, theta), math.cos(theta) * math.copysign(1, theta), 0)
+			# b = (0, 0, 1)
 			
-			vertices.append(SampleVertex((x, y, z), curvature), t, b)
+			vertices.append(SampleVertex((x, y, z), curvature, t, b))
 
 		return vertices
 
@@ -186,9 +188,10 @@ class Arc(Curve):
 			s += step
 
 			t = (math.cos(theta), math.sin(theta), 0)
-			b = (0, 0, 1)
-			
-			vertices.append(SampleVertex((x, y, z), curvature), t, b)
+			b = (-math.sin(theta) * math.copysign(1, theta), math.cos(theta) * math.copysign(1, theta), 0)
+			# b = (0, 0, 1)
+
+			vertices.append(SampleVertex((x, y, z), curvature, t, b))
 
 		return vertices
 
@@ -305,11 +308,10 @@ class BezierSegment(Curve):
 		# curve r(t)'s second derivitvie of t always point to the center of the curve, while on the x-y plane, normal vector n points to left if follows tangent vector t
 		if crossz < 0:
 			k *= -1
-			pass
-		
+
 		t = (vx/vnorm, vy/vnorm, vz/vnorm)
-		# b = (crossx/crossnorm, crossy/crossnorm, crossz/crossnorm)
-		b = (0, 0, 1)
+		b = (crossx/crossnorm, crossy/crossnorm, crossz/crossnorm)
+		# b = (0, 0, 1)
 
 		return k, t, b
 
@@ -417,15 +419,32 @@ def sampleBezierObj(obj):
 		for spline in sampledobj.data.splines:
 			sampledobj.data.splines.remove(spline)
 
+	vertices = []
 	for spline in obj.data.splines:
 		bezspline = BezierSpline(spline)
 		samples = bezspline.sample_vertices
+		vertices += samples
 		bezspline.viewcurvature(samples, sampledobj)
 
 		polyline = sampledobj.data.splines.new('POLY')
 		polyline.points.add(len(samples) - 1)
 		for i in range(len(samples)):
 			polyline.points[i].co = samples[i].co + (1,)
+
+	return vertices
+
+def saveSampleVertices(samples):
+
+	f = open('D:\Documents\Blender\data\samples.csv', 'w')
+	f.write('co.x, co.y, co.z, curvautre, tangent.x, tangent.y, tangent.z, binormal.x, binormal.y, binormal.z\n')
+	for sample in samples:
+		f.write(str(sample.co[0]) + ',' + str(sample.co[1]) + ',' + str(sample.co[2]) + ',')
+		f.write(str(sample.curvature) + ',')
+		f.write(str(sample.tangent[0]) + ',' + str(sample.tangent[1]) + ',' + str(sample.tangent[2]) + ',')
+		f.write(str(sample.binormal[0])+ ',' + str(sample.binormal[1]) + ',' + str(sample.binormal[2]))
+		f.write('\n')
+
+	f.close()
 
 def main():
 	clothoid = Clothoid(10, 0, 0.1)
@@ -442,7 +461,8 @@ def main():
 	# print([v.co for v in vertices])
 
 	obj = getActiveObject()
-	sampleBezierObj(obj)
+	vertices = sampleBezierObj(obj)
+	# saveSampleVertices(vertices)
 
 if __name__ == "__main__":
 	main()
