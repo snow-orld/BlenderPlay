@@ -71,20 +71,37 @@ class TrackTool_Operator_SmoothElevation(Operator):
     bl_label = "Smooth Elevation"
     bl_options = {"REGISTER","UNDO"}
 
+    # All handles set to AUTO then back will change curve's plan-view shape
+    # Interpolate only z between two selected points to guarantee a smotth elevation! - TBD
     def smooth(self, obj):
         if obj.type != 'CURVE':
             return
 
+        def hasNoHandle(bezpoint):
+            return (bezpoint.handle_left - bezpoint.co).length < 1E-4 and (bezpoint.handle_right - bezpoint.co).length < 1E-4
+
         for spline in obj.data.splines:
             if (spline.type == 'BEZIER'):
-                for i in range(len(spline.bezier_points) - 1)[1:]:
+                for i in range(len(spline.bezier_points)):
                     p = spline.bezier_points[i]
+                    handle_left = p.handle_left.copy()
+                    handle_right = p.handle_right.copy()
                     handle_left_type = p.handle_left_type
                     handle_right_type = p.handle_right_type
+                        
+                    if hasNoHandle(p):
+                        print('Point #%d HAS NO HANDLES' % i)
+
                     p.handle_left_type = 'AUTO'
                     p.handle_right_type = 'AUTO'
-                    p.handle_left_type = 'ALIGNED'
-                    p.handle_right_type = 'ALIGNED'
+                    p.handle_left_type = handle_left_type
+                    p.handle_right_type = handle_right_type
+
+                    p.handle_left.x = handle_left.x
+                    p.handle_left.y = handle_left.y
+                    p.handle_right.x = handle_right.x
+                    p.handle_right.y = handle_right.y
+
 
     @classmethod
     def poll(cls, context):
@@ -202,25 +219,32 @@ class TrackTool_Operator_GenerateRoad(Operator):
             newobj.location = Vector((0,0,0))
             bpy.context.scene.objects.link(newobj)
 
-            poly = curve.splines.new('POLY')
-            poly.points.add(1)
-            poly.points[0] = Vector(width / 2, 0, 0)
-            poly.points[1] = Vector(-width / 2, 0, 0)
+        targetobj = bpy.data.objects['CrossSection']
+
+        #Clean CrossSection data
+        for spline in targetobj.data.splines:
+            targetobj.data.splines.remove(spline)
+
+        poly = targetobj.data.splines.new('POLY')
+        poly.points.add(1)
+        poly.points[0].co = (self.width / 2, 0, 0, 1)
+        poly.points[1].co = (-self.width / 2, 0, 0, 1)
 
         if obj.data.bevel_object == None:
             obj.data.bevel_object = bpy.data.objects['CrossSection']
 
+        if obj.data.twist_mode != 'Z_UP':
+            obj.data.twist_mode = 'Z_UP'
+
     @classmethod
     def poll(cls, context):
         obj = context.object
-        return obj and obj.select and obj.type == 'CURVE' and obj.data.splines[0].type == 'BEZIER'
+        return obj and obj.select and obj.type == 'CURVE'
 
     def execute(self, context):
         obj = context.active_object
         self.generate(obj)
         return {'FINISHED'}
-
-
 
 class TrackTool_Operator_Convert2Mesh(Operator):
     """Convert the beveled bezier curve to a mesh, meanwhile caculating uv map as a strip along central line"""
@@ -365,6 +389,36 @@ def drawLine(start, end, location):
     testline.points[0].co = (start.x, start.y, start.z, 1)
     testline.points[1].co = (end.x, end.y, end.z, 1)
 
+class TrackTool_Operator_Helper_Bezier_Handles(Operator):
+    """Examine the hanles' coordinates along with control points' coordinates"""
+    bl_idname = "curve.bezier_detail"
+    bl_label = "Bezier Handles' Coordinates"
+    bl_options = {"REGISTER","UNDO"}
+
+    def examine(self, obj):
+        for i in range(len(obj.data.splines)):
+            spline = obj.data.splines[i]
+            print('\nSpline #' + str(i))
+            for j in range(len(spline.bezier_points)):
+                p = spline.bezier_points[j]
+                print('\nBezier Point ' + str(j))
+                print('control_point %s\nhandle_left %s (%s)\nhandle_right %s (%s)' % \
+                    (p.co, p.handle_left, p.handle_left_type, p.handle_right, p.handle_right_type))
+                if (p.co - p.handle_left).length < 1E-4:
+                    print('NO LEFT HANDLE')
+                if (p.co - p.handle_right).length < 1E-4:
+                    print('NO RIGHT HANDLE')
+
+    @classmethod
+    def poll(self, context):
+        obj = context.object
+        return obj and obj.select and obj.type == 'CURVE' and obj.data.splines[0].type == 'BEZIER'
+
+    def execute(self, context):
+        obj = context.active_object
+        self.examine(obj)
+        return {'FINISHED'}
+
 # *********** tools panel for track tool *****************
 
 class TrackToolPanel:
@@ -434,13 +488,13 @@ class TrackTool_Panel_RefernceLine(TrackToolPanel, Panel):
         col.label(text="Surface:")
         self.draw_road_cross_section(col)
 
-        col = layout.column(align=True)
-        col.label(text="Sample:")
-        self.draw_sample_curve(col)
+        # col = layout.column(align=True)
+        # col.label(text="Sample:")
+        # self.draw_sample_curve(col)
 
-        col = layout.column(align=True)
-        col.label(text="Edit:")
-        self.draw_proportion_edit(col)
+        # col = layout.column(align=True)
+        # col.label(text="Edit:")
+        # self.draw_proportion_edit(col)
 
 class TrackTool_Panel_Mesh(TrackToolPanel, Panel):
     bl_label = "Mesh"
@@ -452,6 +506,16 @@ class TrackTool_Panel_Mesh(TrackToolPanel, Panel):
         col = layout.column(align=True)
         col.operator("track.convert_to_mesh", text="Convert to Mesh", icon="MESH_DATA")
         col.operator("track.edit_uv", text="Edit UV", icon="MATSPHERE")
+
+class TrackTool_Panel_Helper(TrackToolPanel, Panel):
+    bl_label = "Helper"
+
+    def draw(self, context):
+        layout = self.layout
+
+        row = layout.row()
+        col = row.column(align=True)
+        col.operator("curve.bezier_detail", text="Bezier Detail", icon="CURVE_BEZCURVE")
 
 def register():
     bpy.utils.register_class(TrackTool_Operator_Align2XYPlane)
@@ -465,6 +529,10 @@ def register():
     bpy.utils.register_class(TrackTool_Panel_RefernceLine)
     bpy.utils.register_class(TrackTool_Panel_Mesh)
 
+    # helper
+    bpy.utils.register_class(TrackTool_Operator_Helper_Bezier_Handles)
+    bpy.utils.register_class(TrackTool_Panel_Helper)
+
 def unregister():
     bpy.utils.unregister_class(TrackTool_Operator_Align2XYPlane)
     bpy.utils.unregister_class(TrackTool_Operator_SmoothElevation)
@@ -476,6 +544,10 @@ def unregister():
 
     bpy.utils.unregister_class(TrackTool_Panel_RefernceLine)
     bpy.utils.unregister_class(TrackTool_Panel_Mesh)
+
+    # helper
+    bpy.utils.unregister_class(TrackTool_Operator_Helper_Bezier_Handles)
+    bpy.utils.unregister_class(TrackTool_Panel_Helper)
 
 if __name__ == "__main__":
     register()
