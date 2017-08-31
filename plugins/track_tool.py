@@ -30,6 +30,7 @@ bl_info = {
 #Imports:
 import bpy
 from bpy.types import Operator, Menu, Panel, UIList
+from bpy.props import BoolProperty, FloatProperty, IntProperty, StringProperty
 from mathutils import Vector
 from math import floor
 import bmesh
@@ -45,12 +46,17 @@ class TrackTool_Operator_Align2XYPlane(Operator):
 
     def align(self, obj):
         if obj.type == 'CURVE':
+            obj.location.z = 0
             for spline in obj.data.splines:
                 if spline.type == 'BEZIER':
                     for p in spline.bezier_points:
+                        p.handle_left_type = 'FREE'
+                        p.handle_right_type = 'FREE'
                         p.co.z = 0
                         p.handle_right.z = 0
                         p.handle_left.z = 0
+                        p.handle_left_type = 'ALIGNED'
+                        p.handle_right_type = 'ALIGNED'
                 else:
                     for p in spline.points:
                         p.co.z = 0
@@ -65,48 +71,136 @@ class TrackTool_Operator_Align2XYPlane(Operator):
         self.align(obj)
         return {'FINISHED'}
 
-class TrackTool_Operator_SmoothElevation(Operator):
-    """Changes types of all control points except the start and end of a bezier curve to 'automatic' to get smooth elevation change """
-    bl_idname = "track.smooth_elevation"
+class TrackTool_Operator_InterpolateElevation(Operator):
+    """Select control points in edit mode to smooth the elevation between start and end of the selected"""
+    bl_idname = "track.interpolate_elevation"
     bl_label = "Smooth Elevation"
     bl_options = {"REGISTER","UNDO"}
 
-    # All handles set to AUTO then back will change curve's plan-view shape
-    # Interpolate only z between two selected points to guarantee a smotth elevation! - TBD
+    # All handles set to AUTO then back will change curve's plan-view shape - not work for all 
+    # Interpolate only z between two selected points to guarantee a smotth elevation! - works only for sampled curve
     def smooth(self, obj):
-        if obj.type != 'CURVE':
+        selected, spline = self.getSelectedPoints(obj)
+        
+        if selected is None:
+            self.report({"ERROR"}, "Selected control points are not consecutive in one spline.")
             return
 
-        def hasNoHandle(bezpoint):
-            return (bezpoint.handle_left - bezpoint.co).length < 1E-4 and (bezpoint.handle_right - bezpoint.co).length < 1E-4
+        loop_count = len(spline.bezier_points)
+        # selected is in the order of bezpoints from 0, need to rearrange it from the two ends fo the selected range
+        # Only two cases: 1.the gap is in between the dictionary elements, 2. the gap is just between the end and start of the dic elements
+        keylist = []
+        for key in selected:
+            keylist.append(key)
+        start_index = keylist[0]
+        end_index = keylist[-1]
+        prev_index = start_index
+        for key in keylist[1:]:
+            if (key - prev_index) % loop_count > 1:
+                start_index = key
+                end_index = prev_index
+            prev_index = key
 
+        print('Seletec smoothing range starts from %d to %d' % (start_index, end_index))
+
+        # start and end point should have smooth handle on x-y plane
+        z_total_diff = selected[end_index].co.z - selected[start_index].co.z
+        s_offset = 0
+        no_handles = []
+        distance = [0]
+        for i in range(len(selected)):
+            prev_index = (start_index + i - 1) % loop_count
+            current_index = (start_index + i) % loop_count
+            no_handles.append(self.has_no_handle(selected[current_index]))
+            if i == 0:
+                continue
+            s_offset += self.getProjectedDistance(selected[prev_index], selected[current_index], spline.resolution_u)
+            distance.append(round(s_offset, 4))
+        for i in range(len(selected)):
+            if i == 0 or i == len(selected) - 1:
+                continue
+            prev_index = (start_index + i - 1) % loop_count
+            current_index = (start_index + i) % loop_count
+            post_index = (start_index + i + 1) % loop_count
+            p = selected[current_index]
+            p.handle_left_type = 'FREE'
+            p.handle_right_type = 'FREE'
+            p.co.z = selected[start_index].co.z + distance[i] / distance[-1] * z_total_diff
+
+            if no_handles[i]:
+                p.handle_left.z = p.co.z
+                p.handle_right.z = p.co.z
+            
+            p.handle_left_type = 'ALIGNED'
+            p.handle_right_type = 'ALIGNED'
+
+    def has_no_handle(self, bezpoint):
+        return (bezpoint.handle_left - bezpoint.co).length < 1E-4 and (bezpoint.handle_right - bezpoint.co).length < 1E-4
+
+    # Tell if control point selected - if one handle of a control point is selected, the control point is selected
+    def is_selected(self, bezpoint):
+        return bezpoint.select_control_point or bezpoint.select_left_handle or bezpoint.select_right_handle
+
+    # Get Selected control points, valid only when selected control points are neighbors to one another
+    def getSelectedPoints(self, obj):
+        # Return empty dictionary<index, bezpoint> if not valid
+        selected = {}
+        find_selected_in_prev_spline = False
+        in_spline = None
         for spline in obj.data.splines:
-            if (spline.type == 'BEZIER'):
+            if spline.type == 'BEZIER':
+                last_selected_point_index = -1
+                find_selected_in_cur_spline = False
+                isolated_selected_gap_count = 0
                 for i in range(len(spline.bezier_points)):
                     p = spline.bezier_points[i]
-                    handle_left = p.handle_left.copy()
-                    handle_right = p.handle_right.copy()
-                    handle_left_type = p.handle_left_type
-                    handle_right_type = p.handle_right_type
-                        
-                    if hasNoHandle(p):
-                        print('Point #%d HAS NO HANDLES' % i)
+                    if self.is_selected(p):
+                        if not find_selected_in_cur_spline:
+                            find_selected_in_cur_spline = True
+                            in_spline = spline
+                        if find_selected_in_prev_spline:
+                            break
+                        if isolated_selected_gap_count > 1:
+                            break
+                        last_selected_point_index = i
+                        selected[i] = p
+                    else:
+                        # if p is not selected but its circular presessor is selected
+                        if find_selected_in_cur_spline and (i - last_selected_point_index) % len(spline.bezier_points) == 1:
+                            isolated_selected_gap_count += 1
 
-                    p.handle_left_type = 'AUTO'
-                    p.handle_right_type = 'AUTO'
-                    p.handle_left_type = handle_left_type
-                    p.handle_right_type = handle_right_type
+                # print(isolated_selected_gap_count, find_selected_in_cur_spline, find_selected_in_prev_spline)
+                if isolated_selected_gap_count > 1:
+                    selected.clear()
+                    break
 
-                    p.handle_left.x = handle_left.x
-                    p.handle_left.y = handle_left.y
-                    p.handle_right.x = handle_right.x
-                    p.handle_right.y = handle_right.y
+                if find_selected_in_cur_spline and find_selected_in_prev_spline:
+                    selected.clear()
+                    break
 
+                if find_selected_in_cur_spline and not find_selected_in_prev_spline:
+                    find_selected_in_prev_spline = True
+
+        return (selected, in_spline) if len(selected) > 1 else (None, None)
+
+    # Get distance on x-y plane between two control points according to their resolution
+    def getProjectedDistance(self, bezpoint1, bezpoint2, resolution):
+        p0 = bezpoint1.co.copy(); p0.z = 0
+        p1 = bezpoint1.handle_right.copy(); p1.z = 0
+        p2 = bezpoint2.handle_left.copy(); p2.z = 0
+        p3 = bezpoint2.co.copy(); p3.z = 0
+        prepoint = p0
+        distance = 0
+        for t in linspace(0, 1, resolution + 1):
+            point = (1-t)*(1-t)*(1-t)*p0 + 3*(1-t)*(1-t)*t*p1 + 3*(1-t)*t*t*p2 + t*t*t*p3
+            distance += linalg.norm(point - prepoint)
+            prepoint = point
+        return distance
 
     @classmethod
     def poll(cls, context):
         obj = context.object
-        return obj and obj.select and obj.type == 'CURVE' and obj.data.splines[0].type == 'BEZIER'
+        return obj and obj.mode == 'EDIT' and obj.type == 'CURVE' and obj.data.splines[0].type == 'BEZIER' and obj.data.splines[0].use_cyclic_u
 
     def execute(self, context):
         obj = context.active_object
@@ -164,10 +258,15 @@ class TrackTool_Operator_Sample2Poly(Operator):
 
     def bezier(self, p0, p1, p2, p3, resolution):
         points = []
-        for t in linspace(0, 1, resolution + 1):
-            point = (1-t)*(1-t)*(1-t)*p0 + 3*(1-t)*(1-t)*t*p1 + 3*(1-t)*t*t*p2 + t*t*t*p3
-            points.append(point)
-
+        # in design phase, two ends of a straight line get their handles sitting together with control points
+        # may be not sufficient valid for all cases, let's wait for bugs to appear
+        if (p1 - p0).length < 1E-4 and (p3 - p2).length < 1E-4:
+            points.append(p0)
+            points.append(p3)
+        else:    
+            for t in linspace(0, 1, resolution + 1):
+                point = (1-t)*(1-t)*(1-t)*p0 + 3*(1-t)*(1-t)*t*p1 + 3*(1-t)*t*t*p2 + t*t*t*p3
+                points.append(point)
         return points
 
     def getSamplePoints(self, spline):
@@ -209,9 +308,13 @@ class TrackTool_Operator_GenerateRoad(Operator):
     bl_label = "Generate Road Cross Section"
     bl_options = {"REGISTER","UNDO"}
 
-    width = 20
+    width = FloatProperty(
+        name = "width",
+        description = "width of the road crosssection",
+        min = 1.0, max = 100.0,
+        default = 10.0)
 
-    def generate(self, obj):
+    def generate(self, obj, width):
         if bpy.data.objects.find('CrossSection') == -1:
             curve = bpy.data.curves.new(name='CrossSection', type='CURVE')
             curve.dimensions = '3D'
@@ -243,7 +346,7 @@ class TrackTool_Operator_GenerateRoad(Operator):
 
     def execute(self, context):
         obj = context.active_object
-        self.generate(obj)
+        self.generate(obj, self.width)
         return {'FINISHED'}
 
 class TrackTool_Operator_Convert2Mesh(Operator):
@@ -398,7 +501,7 @@ class TrackTool_Operator_Helper_Bezier_Handles(Operator):
     def examine(self, obj):
         for i in range(len(obj.data.splines)):
             spline = obj.data.splines[i]
-            print('\nSpline #' + str(i))
+            print('\n===================== Spline #' + str(i) + " =======================")
             for j in range(len(spline.bezier_points)):
                 p = spline.bezier_points[j]
                 print('\nBezier Point ' + str(j))
@@ -418,6 +521,9 @@ class TrackTool_Operator_Helper_Bezier_Handles(Operator):
         obj = context.active_object
         self.examine(obj)
         return {'FINISHED'}
+
+# *********** I/O for track tool *************************
+
 
 # *********** tools panel for track tool *****************
 
@@ -448,8 +554,8 @@ class TrackTool_Panel_RefernceLine(TrackToolPanel, Panel):
     @staticmethod
     def draw_smooth_elevation(layout, label=False):
         if label:
-            layout.label(text="Smooth Handle")
-        layout.operator("track.smooth_elevation", text="Smooth Handle Direction", icon="SMOOTHCURVE")
+            layout.label(text="Interpolate Elevation")
+        layout.operator("track.interpolate_elevation", text="Interpolate Elevation", icon="SMOOTHCURVE")
 
     @staticmethod
     def draw_road_cross_section(layout, label=False):
@@ -488,9 +594,9 @@ class TrackTool_Panel_RefernceLine(TrackToolPanel, Panel):
         col.label(text="Surface:")
         self.draw_road_cross_section(col)
 
-        # col = layout.column(align=True)
-        # col.label(text="Sample:")
-        # self.draw_sample_curve(col)
+        col = layout.column(align=True)
+        col.label(text="Sample:")
+        self.draw_sample_curve(col)
 
         # col = layout.column(align=True)
         # col.label(text="Edit:")
@@ -519,7 +625,7 @@ class TrackTool_Panel_Helper(TrackToolPanel, Panel):
 
 def register():
     bpy.utils.register_class(TrackTool_Operator_Align2XYPlane)
-    bpy.utils.register_class(TrackTool_Operator_SmoothElevation)
+    bpy.utils.register_class(TrackTool_Operator_InterpolateElevation)
     bpy.utils.register_class(TrackTool_Operator_Sample2Poly)
     bpy.utils.register_class(TrackTool_Operator_GenerateRoad)
     bpy.utils.register_class(TrackTool_Operator_Curve_ProportionalEdit)
@@ -535,7 +641,7 @@ def register():
 
 def unregister():
     bpy.utils.unregister_class(TrackTool_Operator_Align2XYPlane)
-    bpy.utils.unregister_class(TrackTool_Operator_SmoothElevation)
+    bpy.utils.unregister_class(TrackTool_Operator_InterpolateElevation)
     bpy.utils.unregister_class(TrackTool_Operator_Sample2Poly)
     bpy.utils.unregister_class(TrackTool_Operator_GenerateRoad)
     bpy.utils.unregister_class(TrackTool_Operator_Curve_ProportionalEdit)
