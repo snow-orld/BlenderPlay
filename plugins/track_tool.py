@@ -522,6 +522,42 @@ class TrackTool_Operator_Helper_Bezier_Handles(Operator):
         self.examine(obj)
         return {'FINISHED'}
 
+class TrackTool_Operator_Helper_Mesh_Detail(Operator):
+    """Exploit the mesh loop's index and its vertex index in a multi-polygon mesh"""
+    bl_idname = "mesh.loop_detail"
+    bl_label = "Mesh Polygon and Vertex Realtion"
+    bl_options = {"REGISTER","UNDO"}
+
+    def examine(self, obj):
+        if obj.mode == 'OBJECT':
+            bpy.ops.object.mode_set(mode='EDIT')
+
+        bm = bmesh.from_edit_mesh(obj.data)
+
+        # exploit edge face loop
+        bpy.ops.mesh.select_all(action='DESELECT')
+        for face in bm.faces:
+            print(face.index)
+            face.select = True
+            for vert in face.verts:
+                # vert.select = True
+                print('face #%d: %s' % (face.index, vert))
+
+            if face.index > 0:
+                break
+
+        bmesh.update_edit_mesh(obj.data)
+
+    @classmethod
+    def poll(self, context):
+        obj = context.object
+        return obj and obj.select and obj.type == 'MESH'
+
+    def execute(self, context):
+        obj = context.active_object
+        self.examine(obj)
+        return {'FINISHED'}
+
 # *********** I/O for track tool *************************
 
 
@@ -623,6 +659,11 @@ class TrackTool_Panel_Helper(TrackToolPanel, Panel):
         col = row.column(align=True)
         col.operator("curve.bezier_detail", text="Bezier Detail", icon="CURVE_BEZCURVE")
 
+
+        row = layout.row()
+        col = row.column(align=True)
+        col.operator("mesh.loop_detail", text="Mesh Detail", icon="MESH_DATA")
+
 def register():
     bpy.utils.register_class(TrackTool_Operator_Align2XYPlane)
     bpy.utils.register_class(TrackTool_Operator_InterpolateElevation)
@@ -637,6 +678,8 @@ def register():
 
     # helper
     bpy.utils.register_class(TrackTool_Operator_Helper_Bezier_Handles)
+    bpy.utils.register_class(TrackTool_Operator_Helper_Mesh_Detail)
+
     bpy.utils.register_class(TrackTool_Panel_Helper)
 
 def unregister():
@@ -653,6 +696,8 @@ def unregister():
 
     # helper
     bpy.utils.unregister_class(TrackTool_Operator_Helper_Bezier_Handles)
+    bpy.utils.unregister_class(TrackTool_Operator_Helper_Mesh_Detail)
+
     bpy.utils.unregister_class(TrackTool_Panel_Helper)
 
 if __name__ == "__main__":
