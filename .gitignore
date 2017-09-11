@@ -9,4 +9,4 @@ scripts/file_selector.py
 plugins/mmd_tools*
 
 source
-data
+data/samples.csv
