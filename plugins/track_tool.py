@@ -366,7 +366,7 @@ class TrackTool_Operator_Convert2Mesh(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.object
-        return obj and obj.select and obj.type == 'CURVE' and obj.data.splines[0].type == 'BEZIER' and obj.data.bevel_object != None
+        return obj and obj.select and obj.type == 'CURVE' and obj.data.bevel_object != None
 
     def execute(self, context):
         obj = context.active_object

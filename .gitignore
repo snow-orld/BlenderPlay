@@ -1,1 +1,12 @@
 *.blend1
+
+scripts/custom_draw.py
+scripts/dialog_box.py
+scripts/mesh_count.py
+scripts/model_execution.py
+scripts/file_selector.py
+
+plugins/mmd_tools*
+
+source
+data
