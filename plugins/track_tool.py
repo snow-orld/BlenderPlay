@@ -143,7 +143,7 @@ class TrackTool_Operator_InterpolateElevation(Operator):
 
     # Get Selected control points, valid only when selected control points are neighbors to one another
     def getSelectedPoints(self, obj):
-        # Return empty dictionary<index, bezpoint> if not valid
+        # Return empty dictionary<index, bezpoint> if not valid -> Change to return None
         selected = {}
         find_selected_in_prev_spline = False
         in_spline = None
@@ -235,10 +235,11 @@ class TrackTool_Operator_Sample2Poly(Operator):
         #clean sampledobj's spline
         self.cleanSplines(sampledobj)
 
+        originalscale = obj.scale
         #get sampled points for central line
         for spline in obj.data.splines:
             points = self.getSamplePoints(spline)
-            polyline = self.addSpline(sampledobj, points)
+            polyline = self.addSpline(sampledobj, points, originalscale)
             polyline.use_cyclic_u = spline.use_cyclic_u
 
     def cleanSplines(self, obj):
@@ -246,13 +247,14 @@ class TrackTool_Operator_Sample2Poly(Operator):
             for spline in obj.data.splines:
                 obj.data.splines.remove(spline)
 
-    def addSpline(self, obj, points):
+    def addSpline(self, obj, points, scale):
+        # take original obj's scale into account
         polyline = obj.data.splines.new('POLY')
         polyline.points.add(len(points) - 1)
 
         for i in range(len(points)):
             x, y, z = points[i]
-            polyline.points[i].co = (x, y, z, 1)
+            polyline.points[i].co = (x * scale.x, y * scale.y, z * scale.z, 1)
 
         return polyline
 
@@ -311,7 +313,7 @@ class TrackTool_Operator_GenerateRoad(Operator):
     width = FloatProperty(
         name = "width",
         description = "width of the road crosssection",
-        min = 1.0, max = 100.0,
+        min = 0.1, max = 100.0,
         default = 10.0)
 
     def generate(self, obj, width):
