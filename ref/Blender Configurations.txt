@@ -1,0 +1,5 @@
+Get Source
+https://wiki.blender.org/index.php/Dev:Doc/Building_Blender/Linux/get_the_source
+
+Python Virtual Environment Setup for Blender
+https://wiki.blender.org/index.php/User:Brita/Configs/Pyenv
