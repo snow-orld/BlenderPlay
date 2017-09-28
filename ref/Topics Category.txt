@@ -1,6 +1,15 @@
 Newly Meet Topic
 
-Constructive Solid Geometry (Bpplean Mesh)
+Constructive Solid Geometry (Boolean Mesh)
 http://www.alsprogrammingresource.com/csg.html
 
 Tesor Flow (Deep Learning)
+
+CREATING A REALISTIC CITY WITH OPENSTREETMAP IN BLENDER (GIS project)
+http://lesterbanks.com/2016/06/realistic-city-openstreetmap-blender/
+blender-osm (just geo referencing)
+https://github.com/vvoovv/blender-osm/wiki/OpenStreetMap-Georeferencing
+Interesting Projects of vvoovv repository list
+
+Procedure Citry Generation
+https://josauder.github.io/procedural_city_generation/#
