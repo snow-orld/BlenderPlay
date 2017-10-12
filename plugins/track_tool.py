@@ -362,6 +362,12 @@ class TrackTool_Operator_Convert2Mesh(Operator):
         bpy.ops.object.convert(target='MESH')
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.remove_doubles()
+        
+        bm = bmesh.from_edit_mesh(obj.data)
+        bmesh.ops.reverse_faces(bm, faces=bm.faces)
+        bm.normal_update()
+        bmesh.update_edit_mesh(obj.data)
+
         for v in obj.data.vertices:
             v.select = True
 
@@ -435,6 +441,113 @@ class TrackTool_Operator_EditUV(Operator):
         self.calculate_uv(obj)
         return {'FINISHED'}
 
+class TrackTool_Operator_MeshConvert2Quad(Operator):
+    """Rewaving track surface mesh to quad using boundary edges"""
+    bl_idname = "track.mesh_quadify"
+    bl_label = "Mesh Face to Quad"
+    bl_options = {"REGISTER","UNDO"}
+
+    def quadify(self, obj):
+        if obj.mode == 'EDIT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
+        
+        edges_to_remove = []
+        is_vindex_in_order = True
+        is_closed_ring = True
+
+        # delete all edges that is not a boundary (linked faces auto removed)
+        if bm.faces:
+            print('Removing all internal faces and edges')
+            for edge in bm.edges:
+                if not edge.is_boundary:
+                    edges_to_remove.append(edge)
+
+            for edge in edges_to_remove:
+                bm.edges.remove(edge)
+
+        if not bm.faces:
+            # with only boundary edge left, wave them to faces
+            for vindex, vert in enumerate(bm.verts):
+                #print(vindex, vert)
+                if vindex != vert.index:
+                    is_vindex_in_order = False
+                    break
+
+            # tell if original mesh is a closed ring - if vert0 and vert1 are isolated
+            bm.verts.ensure_lookup_table()
+            for edge in bm.verts[0].link_edges:
+                for vert in edge.verts:
+                    if vert.index == 1:
+                        is_closed_ring = False
+                        break
+
+            if is_vindex_in_order:
+                # wave
+                # v1 - v0
+                #  | - |
+                # v3 - v2
+                bm.verts.ensure_lookup_table()
+                for vert in bm.verts:
+                    if vert.index % 2:
+                        continue
+                    if not is_closed_ring and vert.index == len(bm.verts) - 2:
+                        continue
+                    v0 = vert
+                    v1 = bm.verts[(vert.index + 1) % len(bm.verts)]
+                    v2 = bm.verts[(vert.index + 2) % len(bm.verts)]
+                    v3 = bm.verts[(vert.index + 3) % len(bm.verts)]
+                    bm.faces.new([v0, v1, v3, v2])
+
+                bmesh.ops.reverse_faces(bm, faces=bm.faces)
+
+            else:
+                self.report({"ERROR"}, "Cannot wave according to vertex index, out of order")
+
+            bm.normal_update()
+            bm.to_mesh(obj.data)
+            bm.free()
+
+            bpy.ops.object.mode_set(mode='EDIT')
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return obj and obj.select and obj.type == 'MESH'
+
+    def execute(self, context):
+        obj = context.active_object
+        self.quadify(obj)
+        return {'FINISHED'}
+
+class TrackTool_Operator_MeshFlipNormal(Operator):
+    """Flip selected mesh's normals direction"""
+    bl_idname = "track.flip_normal"
+    bl_label = "Mesh Flip Normals"
+    bl_options = {"REGISTER","UNDO"}
+
+    def flip(self, obj):
+        mode_original = obj.mode
+        if obj.mode == 'OBJECT':
+            bpy.ops.object.mode_set(mode='EDIT')
+
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.mesh.flip_normals()
+        bpy.ops.mesh.select_all(action='DESELECT')
+        bpy.ops.object.mode_set(mode=mode_original)
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return obj and obj.select and obj.type == 'MESH'
+
+    def execute(self, context):
+        obj = context.active_object
+        self.flip(obj)
+        return {'FINISHED'}
+
 # under construction
 class TrackTool_Operator_Curve_ProportionalEdit(Operator):
     """Custom Proportional Edit with Custom Cut-Off Curves"""
@@ -478,6 +591,7 @@ class TrackTool_Operator_Curve_ProportionalEdit(Operator):
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
+# ----------- helpers ---------------
 def drawLine(start, end, location):
 
     if bpy.data.objects.find('helper') == -1:
@@ -531,13 +645,14 @@ class TrackTool_Operator_Helper_Mesh_Detail(Operator):
     bl_options = {"REGISTER","UNDO"}
 
     def examine(self, obj):
-        if obj.mode == 'OBJECT':
-            bpy.ops.object.mode_set(mode='EDIT')
+        if obj.mode == 'EDIT':
+            bpy.ops.object.mode_set(mode='OBJECT')
 
-        bm = bmesh.from_edit_mesh(obj.data)
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
 
         # exploit edge face loop
-        bpy.ops.mesh.select_all(action='DESELECT')
+        # bpy.ops.mesh.select_all(action='DESELECT') # edit mode only
         for face in bm.faces:
             print(face.index)
             face.select = True
@@ -548,7 +663,8 @@ class TrackTool_Operator_Helper_Mesh_Detail(Operator):
             if face.index > 0:
                 break
 
-        bmesh.update_edit_mesh(obj.data)
+        bm.to_mesh(obj.data)
+        bm.free()
 
     @classmethod
     def poll(self, context):
@@ -650,6 +766,11 @@ class TrackTool_Panel_Mesh(TrackToolPanel, Panel):
         col = layout.column(align=True)
         col.operator("track.convert_to_mesh", text="Convert to Mesh", icon="MESH_DATA")
         col.operator("track.edit_uv", text="Edit UV", icon="MATSPHERE")
+        col.operator("track.mesh_quadify", text="Use Quad Face", icon="MESH_PLANE")
+
+        col = layout.column(align=True)
+        col.label(text="Normals:")
+        col.operator("track.flip_normal", text="Flip Direction")
 
 class TrackTool_Panel_Helper(TrackToolPanel, Panel):
     bl_label = "Helper"
@@ -674,6 +795,8 @@ def register():
     bpy.utils.register_class(TrackTool_Operator_Curve_ProportionalEdit)
     bpy.utils.register_class(TrackTool_Operator_Convert2Mesh)
     bpy.utils.register_class(TrackTool_Operator_EditUV)
+    bpy.utils.register_class(TrackTool_Operator_MeshConvert2Quad)
+    bpy.utils.register_class(TrackTool_Operator_MeshFlipNormal)
 
     bpy.utils.register_class(TrackTool_Panel_RefernceLine)
     bpy.utils.register_class(TrackTool_Panel_Mesh)
@@ -692,6 +815,8 @@ def unregister():
     bpy.utils.unregister_class(TrackTool_Operator_Curve_ProportionalEdit)
     bpy.utils.unregister_class(TrackTool_Operator_Convert2Mesh)
     bpy.utils.unregister_class(TrackTool_Operator_EditUV)
+    bpy.utils.unregister_class(TrackTool_Operator_MeshConvert2Quad)
+    bpy.utils.unregister_class(TrackTool_Operator_MeshFlipNormal)
 
     bpy.utils.unregister_class(TrackTool_Panel_RefernceLine)
     bpy.utils.unregister_class(TrackTool_Panel_Mesh)

@@ -11,5 +11,28 @@ blender-osm (just geo referencing)
 https://github.com/vvoovv/blender-osm/wiki/OpenStreetMap-Georeferencing
 Interesting Projects of vvoovv repository list
 
-Procedure Citry Generation
+Procedure City Generation
 https://josauder.github.io/procedural_city_generation/#
+
+3D Character Blender Plugin
+http://www.manuelbastioni.com/index.php
+
+Make Human - Open Source Tool for 3D Characters
+http://www.makehuman.org/
+
+Traffic Simulation
+PTV Vissim
+----------
+http://vision-traffic.ptvgroup.com/cn/products/ptv-vissim/
+PTV Viswalk
+-----------
+http://vision-traffic.ptvgroup.com/cn/%E4%BA%A7%E5%93%81/ptv-viswalk/
+
+
+Toyota Automated Driving
+http://www.toyota-global.com/innovation/automated_driving/
+
+
+Agent-Based PCG
+NetLogo
+http://ccl.northwestern.edu/netlogo/
