@@ -3,6 +3,7 @@
 import bpy
 import bmesh
 from mathutils import Vector
+from numpy import *
 
 RES = 8
 
@@ -74,30 +75,29 @@ def cubicHermite(vlist):
 		succ_index = (index + 1) % len(vlist)
 		succ_succ_index = (index + 2) % len(vlist)
 
-		p_prev = vlist[prev_index]
-		p_cur = v
-		p_next = vlist[succ_index]
-		p_next_next = vlist[succ_succ_index]
+		p_prev = Vector(vlist[prev_index])
+		p_cur = Vector(v)
+		p_next = Vector(vlist[succ_index])
+		p_next_next = Vector(vlist[succ_succ_index])
+
+		m_cur = Vector(p_next) - Vector(p_prev)
+		m_next = Vector(p_next_next) - Vector(p_cur)	
 
 		polyline = curvedata.splines.new('POLY')
-		polyline.points.add(RES - 1 - 1)
+		polyline.points.add(RES)
 
 		# Sample with cubic hermite spline for each interval
-		for i in range(RES - 1):
-			a = -Vector(p_next_next)*0.5+Vector(p_cur)*1.5-Vector(p_next)*1.5+Vector(p_next_next)*0.5
-			b = Vector(p_prev)-Vector(p_cur)*2.5+Vector(p_next)*0.5
-			c = -Vector(p_prev)*0.5+Vector(p_next)*0.5
-			d = Vector(p_cur)
-			t = i / (RES)
-			x,y,z = a*t*t*t+b*t*t+c*t+d
+		for i in range(RES):
+			t = i / RES
+			x, y, z = p_cur*(2*t*t*t-3*t*t)+m_cur*(p_next[0]-p_cur[0])*(t*t*t-2*t*t+t)+p_next*(-2*t*t*t+3*t*t)+m_next*(p_next[0]-p_cur[0])*(t*t*t-3*t*t)
 			polyline.points[i].co = (x,y,z,1)
 
 def main():
 	
 	vertex_list = get_vertex_list()
 
-	cubic_hermite(vertex_list)
-	# cubicHermite(vertex_list)
+	# cubic_hermite(vertex_list)
+	cubicHermite(vertex_list)
 
 if __name__ == '__main__':
 	main()
