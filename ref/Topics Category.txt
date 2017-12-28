@@ -32,7 +32,10 @@ http://vision-traffic.ptvgroup.com/cn/%E4%BA%A7%E5%93%81/ptv-viswalk/
 Toyota Automated Driving
 http://www.toyota-global.com/innovation/automated_driving/
 
+MapZen
+https://mapzen.com/
 
 Agent-Based PCG
 NetLogo
 http://ccl.northwestern.edu/netlogo/
+
