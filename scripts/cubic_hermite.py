@@ -9,9 +9,9 @@ RES = 8
 
 def get_vertex_list():
 	
-	v1 = (0,1,0)
-	v2 = (1,1,0)
-	v3 = (1,0,0)
+	v1 = (0,10,0)
+	v2 = (1,10,0)
+	v3 = (10,0,0)
 	v4 = (0,0,0)
 
 	return [v1, v2, v3, v4]
@@ -24,13 +24,13 @@ def catmull_rom(spline, index, p0, m0, p1, m1, res=8):
 	succ_succ_index = (index + 2) % len(spline.bezier_points)
 
 	spline.bezier_points[index].co = p0
-	spline.bezier_points[index].handle_right = m0
-	spline.bezier_points[index].handle_left = Vector(p1) - Vector(m0)
+	spline.bezier_points[index].handle_right = Vector(p0) + Vector(m0) *0.33
+	spline.bezier_points[index].handle_left = Vector(p1) - Vector(m0)*0.33
 	spline.bezier_points[index].handle_right_type = 'ALIGNED'
 	spline.bezier_points[index].handle_left_type = 'ALIGNED'
 	spline.bezier_points[succ_index].co = p1
-	spline.bezier_points[succ_index].handle_left = m1
-	spline.bezier_points[succ_index].handle_right = Vector(p0) - Vector(m1)
+	spline.bezier_points[succ_index].handle_left = Vector(p1) - Vector(m1)*0.33
+	spline.bezier_points[succ_index].handle_right = Vector(p0) - Vector(m1)*0.33
 	spline.bezier_points[succ_index].handle_left_type = 'ALIGNED'
 	spline.bezier_points[succ_index].handle_right_type = 'ALIGNED'
 	
@@ -96,8 +96,8 @@ def main():
 	
 	vertex_list = get_vertex_list()
 
-	# cubic_hermite(vertex_list)
-	cubicHermite(vertex_list)
+	cubic_hermite(vertex_list)
+	# cubicHermite(vertex_list)
 
 if __name__ == '__main__':
 	main()
