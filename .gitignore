@@ -15,3 +15,5 @@ plugins/*.zip
 
 source
 data/samples.csv
+
+blender_manual
