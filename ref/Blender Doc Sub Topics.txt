@@ -1,0 +1,5 @@
+Manual - Selection Basic
+https://wiki.blender.org/index.php/Doc:2.4/Manual/Modeling/Meshes/Selecting/Basics
+
+BMesh Design Doc
+https://wiki.blender.org/index.php/Dev:Source/Modeling/BMesh/Design
