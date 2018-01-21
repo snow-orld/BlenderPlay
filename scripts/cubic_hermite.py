@@ -16,6 +16,16 @@ def get_vertex_list():
 
 	return [v1, v2, v3, v4]
 
+def bezier(p0, p1, p2, p3, resolution):
+
+	points = []
+
+	for t in linspace(0, 1, resolution + 1):
+		point = (1-t)*(1-t)*(1-t)*p0 + 3*(1-t)*(1-t)*t*p1 + 3*(1-t)*t*t*p2 + t*t*t*p3
+		points.append(point)
+
+	return points
+
 def catmull_rom(spline, index, p0, m0, p1, m1, res=8):
 	# REF: "Interpolating a data set" on wiki page "Cubic Hermite spline"
 	# Translate to Bezier Curve p0, p0 + m0/3, p1 - m1/3, p1
@@ -96,7 +106,7 @@ def main():
 	
 	vertex_list = get_vertex_list()
 
-	cubic_hermite(vertex_list)
+	# cubic_hermite(vertex_list)
 	# cubicHermite(vertex_list)
 
 if __name__ == '__main__':
